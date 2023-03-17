@@ -1,0 +1,9 @@
+[tool.poetry]
+name = "sphinx_tfdoc"
+version = "0.0.1"
+description = ""
+authors = ["Tommy Wang <twang@august8.net>"]
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
