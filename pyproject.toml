@@ -1,8 +1,13 @@
 [tool.poetry]
 name = "sphinx_tfdoc"
-version = "0.0.1"
+version = "0.0.2"
 description = ""
 authors = ["Tommy Wang <twang@august8.net>"]
+
+[tool.poetry.dependencies]
+Jinja2 = "*"
+sphinx = ">=6"
+tabulate = "*"
 
 [build-system]
 requires = ["poetry-core"]

@@ -1,7 +1,6 @@
-import json
 import os
 from pathlib import Path
-from jinja2 import Environment, FileSystemLoader, TemplateNotFound
+from jinja2 import Environment, FileSystemLoader
 from sphinx.addnodes import toctree
 from sphinx.application import Sphinx
 from sphinx.errors import ExtensionError
@@ -19,7 +18,13 @@ logger = getLogger(__name__)
 
 def rst_tabulate(rows):
     table = [rows]
-    return tabulate([rows],tablefmt="grid")
+    return tabulate([rows], tablefmt="grid")
+
+
+def custom_indent(s: str, width: int) -> str:
+    lines = s.splitlines()
+    lines = [" " * width + line if len(line) else line for line in lines]
+    return "\n".join(lines)
 
 
 def tfdoc_init(app: Sphinx) -> None:
@@ -53,9 +58,12 @@ def tfdoc_init(app: Sphinx) -> None:
             loader=FileSystemLoader(template_paths),
             trim_blocks=True,
             lstrip_blocks=True,
+            keep_trailing_newline=True,
         )
         env.globals["tabulate"] = rst_tabulate
         env.globals["config"] = app.config
+        env.globals["path_exists"] = os.path.exists
+        env.filters["indent"] = custom_indent
         for key, module in status_iterator(
             store.modules.items(),
             bold("[tfdoc] Rendering Modules "),
@@ -103,8 +111,9 @@ def setup(app: Sphinx) -> dict:
     app.add_config_value("tfdoc_template_dir", None, "env")
     app.add_config_value("tfdoc_target", "tfdoc", "env")
     app.add_config_value("tfdoc_module_docstring_files", [], "env")
-    app.add_config_value("tfdoc_auto_common_doc", True, "env")
-    app.add_config_value("tfdoc_common_doc_dir", True, "env")
+    app.add_config_value("tfdoc_docstring_ignores", [], "env")
+    #app.add_config_value("tfdoc_auto_common_doc", True, "env")
+    #app.add_config_value("tfdoc_common_doc_dir", [], "env")
     app.add_domain(TerraformDomain)
 
     return {

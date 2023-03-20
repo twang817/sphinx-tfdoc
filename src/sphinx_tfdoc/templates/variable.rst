@@ -1,20 +1,17 @@
-.. tf:variable:: {{ module.name }}.{{ name }}
+{% extends "base.rst" %}
 
-{% filter indent(4, first=True) %}
+{% block field_list %}
 :Type:
     .. code-block::
 
-{{ item.type | indent(8, first=True) }}
+{{ item.type | indent(8) }}
 {% if item.default != "null" %}
 
 :Default:
        .. code-block::
 
-{{ item.default | indent(8, first=True) }}
+{{ item.default | indent(8) }}
 {% endif %}
 
-{% if item.docstring %}
-{{ item.docstring }}
 
-{% endif %}
-{% endfilter %}
+{% endblock field_list %}

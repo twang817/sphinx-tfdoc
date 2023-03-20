@@ -1,10 +1,7 @@
-.. tf:module_call:: {{ module.name }}.{{ name }}
+{% extends "base.rst" %}
 
-{% filter indent(4, first=True) %}
-   :Source: ``{{ item.source }}``
+{% block field_list %}
+:Source: ``{{ item.source }}``
 
-{% if item.docstring %}
-{{ item.docstring }}
 
-{% endif %}
-{% endfilter %}
+{% endblock field_list %}

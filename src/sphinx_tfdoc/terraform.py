@@ -1,92 +1,151 @@
-from typing import Any
+from typing import Any, cast, NamedTuple
 
-from docutils import nodes, utils
+from docutils import nodes
+from docutils.nodes import Element
 from docutils.parsers.rst import directives
-from docutils.statemachine import StringList
 from sphinx import addnodes
-from sphinx.addnodes import desc_signature
+from sphinx.addnodes import desc_signature, pending_xref
+from sphinx.builders import Builder
 from sphinx.directives import ObjectDescription
 from sphinx.domains import Domain, ObjType
+from sphinx.environment import BuildEnvironment
 from sphinx.locale import _
+from sphinx.roles import XRefRole
+from sphinx.util.logging import getLogger
+from sphinx.util.nodes import make_id, make_refnode
 from sphinx.util.typing import OptionSpec
 
+from .store import TerraformModule, TerraformObjectBase
 
-class TerraformObjectDirective(ObjectDescription[str]):
+
+logger = getLogger(__name__)
+
+
+class TerraformObjectDirective(ObjectDescription[tuple[str, str, str]]):
     option_spec: OptionSpec = {
         "noindex": directives.flag,
+        "noindexentry": directives.flag,
+        "nocontentsentry": directives.flag,
     }
 
-    def handle_signature(self, sig: str, signode: desc_signature) -> str:
-        self.sig_type = self.name.split(":")[-1]
+    tfobj: TerraformModule | TerraformObjectBase | None = None
 
-        if self.sig_type == "module":
-            module_name = sig
+    @property
+    def display_name(self):
+        return self.objtype
+
+    @property
+    def module_name(self):
+        if isinstance(self.tfobj, TerraformModule):
+            return self.tfobj.name
+        return self.tfobj.module.name
+
+    def get_tf_object(self, sig: str) -> None:
+        module_name, name = sig.rsplit(".", 1)
+        module = self.env.tfdoc_store.modules[module_name]
+        self.tfobj = getattr(module, f"{self.objtype}s")[name]
+
+    def get_signature_name_prefix(self, sig: str) -> list[nodes.Node]:
+        return []
+
+    def get_signature_suffix(self, sig: str) -> list[nodes.Node]:
+        return []
+
+    def handle_signature(
+        self, sig: str, signode: desc_signature
+    ) -> tuple[str, str, str]:
+        self.get_tf_object(sig)
+
+        signode += addnodes.desc_annotation(self.display_name, self.display_name)
+        signode += addnodes.desc_sig_space()
+
+        signode += self.get_signature_name_prefix(sig)
+        signode += addnodes.desc_name(self.tfobj.name, self.tfobj.name)
+
+        signode += self.get_signature_suffix(sig)
+
+        return self.module_name, self.display_name, self.tfobj.name
+
+    def add_target_and_index(
+        self, name: tuple[str, str, str], sig: str, signode: desc_signature
+    ) -> None:
+        module_name, objtype, objname = name
+        fullname = ".".join([module_name, objtype.replace(" ", "_"), objname])
+
+        node_id = make_id(self.env, self.state.document, objtype, objname)
+        signode["ids"].append(node_id)
+        self.state.document.note_explicit_target(signode)
+
+        domain = cast(TerraformDomain, self.env.get_domain("tf"))
+        domain.note_object(fullname, objtype, node_id, signode)
+
+        if "noindexentry" not in self.options:
+            indextext = self.get_index_text(module_name, objname)
+            if indextext:
+                self.indexnode["entries"].append(
+                    ("single", indextext, node_id, "", None)
+                )
+
+    def get_index_text(self, module_name: str, objname: str):
+        return f"{objname} ({self.objtype} in module {module_name})"
+
+
+class TerraformModuleDirective(TerraformObjectDirective):
+    @property
+    def module_name(self):
+        return self.tfobj.name
+
+    def get_tf_object(self, sig: str) -> None:
+        self.tfobj = self.env.tfdoc_store.modules[sig]
+
+    def get_index_text(self, module_name: str, objname: str):
+        return f"{objname} ({self.objtype})"
+
+
+class TerraformManagedResourceDirective(TerraformObjectDirective):
+    display_name = "resource"
+
+    def get_signature_name_prefix(self, sig: str) -> list[nodes.Node]:
+        return [
+            addnodes.desc_sig_keyword(
+                self.tfobj.resource_type, self.tfobj.resource_type
+            ),
+            addnodes.desc_sig_literal_char(".", "."),
+        ]
+
+
+class TerraformDataResourceDirective(TerraformManagedResourceDirective):
+    display_name = "data"
+
+
+class TerraformRequiredProviderDirective(TerraformObjectDirective):
+    display_name = "required provider"
+
+
+class TerraformModuleCallDirective(TerraformObjectDirective):
+    display_name = "called module"
+
+
+class TerraformVariableDirective(TerraformObjectDirective):
+    def get_signature_suffix(self, sig: str) -> list[nodes.Node]:
+        if not self.tfobj.required:
+            return addnodes.desc_optional("optional", "optional")
         else:
-            module_name, sig = sig.rsplit(".", 1)
+            return addnodes.desc_optional("required", "required")
 
-        self.module = self.env.tfdoc_store.modules[module_name]
-        if self.sig_type != "module":
-            self.obj = getattr(self.module, f"{self.sig_type}s")[sig]
 
-        sig_type_name = self.sig_type
-        if self.sig_type == "managed_resource":
-            sig_type_name = "resource"
-        elif self.sig_type == "data_resource":
-            sig_type_name = "data"
-        elif self.sig_type == "required_provider":
-            sig_type_name = "required provider"
-        elif self.sig_type == "module_call":
-            sig_type_name = "called module"
+class TerraformOutputDirective(TerraformObjectDirective):
+    pass
 
-        signode += addnodes.desc_annotation(sig_type_name, sig_type_name)
 
-        if self.sig_type in ("data_resource", "managed_resource"):
-            signode += addnodes.desc_addname(
-                self.obj.resource_type, self.obj.resource_type
-            )
-            signode += addnodes.desc_sig_literal_char(".", ".")
+class TerraformXRefRole(XRefRole):
+    pass
 
-        signode += addnodes.desc_name(sig, sig)
 
-        if self.sig_type == "variable":
-            if not self.obj.required:
-                signode += addnodes.desc_optional("optional", "optional")
-            else:
-                signode += addnodes.desc_optional("required", "required")
-
-        return sig
-
-    # def transform_content(self, contentnode: addnodes.desc_content) -> None:
-    #     if self.sig_type == "module":
-    #         obj = self.module
-    #     else:
-    #         obj = self.obj
-
-    #     if self.sig_type != "module" and self.sig_type != "required_provider":
-    #         docstring = obj.docstring
-    #         if self.env.app:
-    #             self.env.app.emit(
-    #                 "autodoc-process-docstring",
-    #                 "object",
-    #                 obj.name,
-    #                 obj,
-    #                 self.options,
-    #                 docstring,
-    #             )
-    #         document = utils.new_document(
-    #             f"{obj.filename}#L{obj.line - len(obj.docstring)}-L{obj.line}",
-    #             self.state.document.settings,
-    #         )
-
-    #         self.state.nested_parse(
-    #             StringList(
-    #                 docstring,
-    #                 source=obj.filename,
-    #             ),
-    #             self.content_offset,
-    #             document,
-    #         )
-    #         contentnode.extend(document.children)
+class ObjectEntry(NamedTuple):
+    docname: str
+    node_id: str
+    objtype: str
 
 
 class TerraformDomain(Domain):
@@ -101,17 +160,60 @@ class TerraformDomain(Domain):
         "variable": ObjType(_("variable"), "variable"),
     }
     directives: dict[str, type[TerraformObjectDirective]] = {
-        "module": TerraformObjectDirective,
-        "data_resource": TerraformObjectDirective,
-        "managed_resource": TerraformObjectDirective,
-        "module_call": TerraformObjectDirective,
-        "output": TerraformObjectDirective,
-        "required_provider": TerraformObjectDirective,
-        "variable": TerraformObjectDirective,
+        "module": TerraformModuleDirective,
+        "data_resource": TerraformDataResourceDirective,
+        "managed_resource": TerraformManagedResourceDirective,
+        "module_call": TerraformModuleCallDirective,
+        "output": TerraformOutputDirective,
+        "required_provider": TerraformRequiredProviderDirective,
+        "variable": TerraformVariableDirective,
     }
-    roles: dict[str, Any] = {}
+    roles: dict[str, Any] = {
+        "variable": TerraformXRefRole(),
+        "resource": TerraformXRefRole(),
+        "output": TerraformXRefRole(),
+        "data": TerraformXRefRole(),
+        "required_provider": TerraformXRefRole(),
+        "called_module": TerraformXRefRole(),
+        "module": TerraformXRefRole(),
+    }
     indicies: dict[str, Any] = {}
     initial_data: dict[str, dict[str, tuple[Any]]] = {
         "objects": {},
         "modules": {},
     }
+
+    @property
+    def objects(self) -> dict[str, ObjectEntry]:
+        return self.data.setdefault("object", {})
+
+    def note_object(self, name: str, objtype: str, node_id: str, location: Any = None):
+        if name in self.objects:
+            logger.warning(f"duplicate object description of {name}")
+        self.objects[name] = ObjectEntry(self.env.docname, node_id, objtype)
+
+    def resolve_xref(
+        self,
+        env: BuildEnvironment,
+        fromdocname: str,
+        builder: Builder,
+        type: str,
+        target: str,
+        node: pending_xref,
+        contnode: Element,
+    ) -> Element | None:
+        if type == "module":
+            fullname = ".".join([target, type, target])
+            title = ".".join([type, target])
+        else:
+            module, name = target.split(".")
+            fullname = ".".join([module, type, name])
+            title = fullname
+        if fullname in self.objects:
+            obj = self.objects[fullname]
+            return make_refnode(
+                builder, fromdocname, obj.docname, obj.node_id, contnode, title
+            )
+        else:
+            names = "\n".join(list(self.objects.keys()))
+            logger.warning(f"could not resolve {fullname} among {names}")

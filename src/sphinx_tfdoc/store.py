@@ -1,8 +1,7 @@
-import itertools
 import json
 import os
+import re
 import subprocess
-from typing import Any
 
 from sphinx.config import Config
 from sphinx.errors import ExtensionError
@@ -12,6 +11,24 @@ from sphinx.util.logging import getLogger
 
 
 logger = getLogger(__name__)
+
+
+def _strip_leading_spaces(lines: list[str]) -> list[str]:
+    if lines:
+        spaces = min([len(line) - len(line.lstrip()) for line in lines if len(line)])
+        lines = [line[spaces:] for line in lines]
+    return lines
+
+
+def _should_ignore(config: Config, line: str) -> bool:
+    for pat in config.tfdoc_docstring_ignores:
+        if isinstance(pat, str):
+            if pat in line:
+                return True
+        elif isinstance(pat, re.Pattern):
+            if pat.match(line):
+                return True
+    return False
 
 
 class TerraformModule:
@@ -66,7 +83,7 @@ class TerraformModule:
         )
 
     @property
-    def docstring(self) -> list[str]:
+    def docstring(self) -> str | None:
         if hasattr(self, "_docstring"):
             return self._docstring
 
@@ -80,29 +97,26 @@ class TerraformModule:
                 for line in lines:
                     line = line.lstrip()
                     if not in_comment:
-                        if "vim:" in line:
-                            continue
-                        if "{{{" in line:
+                        if _should_ignore(self.config, line):
                             continue
                         if line.startswith("#"):
                             in_comment = True
-                            result.append(line[1:].rstrip())
+                            result.append(line[1:].rstrip("\n"))
                     else:
-                        if "{{{" in line:
-                            continue
-                        if "}}}" in line:
+                        if _should_ignore(self.config, line):
                             continue
                         if line.startswith("#"):
-                            result.append(line[1:].rstrip())
+                            result.append(line[1:].rstrip("\n"))
                         else:
                             break
                 if result:
                     break
-        if result:
-            spaces = min([len(line) - len(line.lstrip()) for line in result if len(line)])
-            result = [line[spaces:] for line in result]
-            result += [""]
-        self._docstring = "\n".join(result)
+
+        if not result:
+            return None
+
+        result += [""]
+        self._docstring = "\n".join(_strip_leading_spaces(result))
         return self._docstring
 
 
@@ -119,7 +133,7 @@ class TerraformObjectBase:
         return self.data["pos"]["filename"]
 
     @property
-    def line(self) -> str:
+    def line(self) -> int:
         return self.data["pos"]["line"] - 1
 
     @property
@@ -127,26 +141,30 @@ class TerraformObjectBase:
         return self.kind
 
     @property
-    def docstring(self) -> list[str]:
+    def docstring(self) -> str | None:
         if hasattr(self, "_docstring"):
             return self._docstring
 
         with open(self.filename, "r") as f:
             lines = f.readlines()
+
         result = []
         if self.line != 0:
             for line in reversed(lines[: self.line]):
-                line = line.strip()
-                if "{{{" in line:
-                    continue
-                if "}}}" in line:
+                line = line.lstrip()
+                if _should_ignore(self.config, line):
                     continue
                 if line.startswith("#"):
-                    result.append(line[1:].strip())
+                    result.append(line[1:].rstrip("\n"))
                     continue
                 break
+
+        if not result:
+            return None
+
         result = list(reversed(result))
-        self._docstring = "\n".join(result)
+        result += [""]
+        self._docstring = "\n".join(_strip_leading_spaces(result))
         return self._docstring
 
 
@@ -252,16 +270,19 @@ class TerraformRequiredProvider(TerraformObjectBase):
         return f"tf:provider {self.provider}"
 
     @property
-    def docstring(self) -> list[str]:
-        return ""
+    def docstring(self) -> str | None:
+        return None
 
     @property
-    def source(self) -> str:
-        return self.data.get("source", "")
+    def source(self) -> str | None:
+        return self.data.get("source", None)
 
     @property
-    def version_constraints(self) -> str:
-        return ", ".join(self.data.get("version_constraints", []))
+    def version_constraints(self) -> str | None:
+        s = self.data.get("version_constraints", [])
+        if not s:
+            return None
+        return ", ".join(s)
 
 
 TF_OBJ_MAP = {cls.kind: cls for cls in TerraformObjectBase.__subclasses__()}
@@ -269,7 +290,7 @@ TF_OBJ_MAP = {cls.kind: cls for cls in TerraformObjectBase.__subclasses__()}
 
 class TerraformStore:
     def __init__(self, config: Config):
-        self.modules = {}
+        self.modules: dict[str, TerraformModule] = {}
         self.config = config
 
     def load(self, dirs: list[str], recursive: bool = True) -> bool:
