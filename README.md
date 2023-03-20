@@ -6,6 +6,8 @@ Inspired by [sphinx-terraform][1] and [sphinx-autoapi][2] sphinx-tfdoc documents
 Terraform modules by using [terraform-config-inspect][3] to scan and parse
 docstrings from Terraform files.
 
+sphinx-tfdoc was built with pydata-sphinx-theme in mind.
+
 # Installation
 
 ```
