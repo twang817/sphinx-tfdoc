@@ -15,9 +15,10 @@ pip install sphinx-tfdoc
 # Quickstart
 
 1. Use pip to install `sphinx-tfdoc`
-2. Add `sphinx-tfdoc` to your conf.py
-3. Set `tfdoc_dirs` to the root folder contain your Terraform modules
-4. Run `make html`
+2. Install [terraform-config-inspect][3]
+3. Add `sphinx-tfdoc` to your conf.py
+4. Set `tfdoc_dirs` to the root folder contain your Terraform modules
+5. Run `make html`
 
 # How it works
 
