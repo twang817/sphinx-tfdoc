@@ -4,8 +4,11 @@
 .. tf:module:: {{ module.name }}
 
 {% filter indent(4) %}
+{% if module.docstring %}
 {{ module.docstring }}
+{% endif %}
 
+{% if module.required_providers.items() | length > 0 %}
 Required Providers
 ^^^^^^^^^^^^^^^^^^
 {% with directive = "required_provider" %}
@@ -13,7 +16,9 @@ Required Providers
 {% include "required_provider.rst" %}
 {% endfor %}
 {% endwith %}
+{% endif %}
 
+{% if module.module_calls.items() | length > 0 %}
 Called Modules
 ^^^^^^^^^^^^^^
 {% with directive = "module_call" %}
@@ -21,7 +26,9 @@ Called Modules
 {% include "module_call.rst" %}
 {% endfor %}
 {% endwith %}
+{% endif %}
 
+{% if module.variables.items() | length > 0 %}
 Variables
 ^^^^^^^^^
 {% with directive = "variable" %}
@@ -29,7 +36,9 @@ Variables
 {% include "variable.rst" %}
 {% endfor %}
 {% endwith %}
+{% endif %}
 
+{% if module.managed_resources.items() | length > 0 %}
 Resources
 ^^^^^^^^^
 {% with directive = "managed_resource" %}
@@ -37,7 +46,9 @@ Resources
 {% include "managed_resource.rst" %}
 {% endfor %}
 {% endwith %}
+{% endif %}
 
+{% if module.data_resources.items() | length > 0 %}
 Data Resources
 ^^^^^^^^^^^^^^
 {% with directive = "data_resource" %}
@@ -45,7 +56,9 @@ Data Resources
 {% include "data_resource.rst" %}
 {% endfor %}
 {% endwith %}
+{% endif %}
 
+{% if module.outputs.items() | length > 0 %}
 Outputs
 ^^^^^^^
 {% with directive = "output" %}
@@ -53,4 +66,5 @@ Outputs
 {% include "output.rst" %}
 {% endfor %}
 {% endwith %}
+{% endif %}
 {% endfilter %}
