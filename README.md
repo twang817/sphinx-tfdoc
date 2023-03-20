@@ -37,7 +37,7 @@ reference Terraform objects.  The custom roles follow the format:
 ```
 
 For example, to refer to a variable "name" in the a module "vpc", you use the
-role `:tf:variable:\`vpc.name\``.
+role `` :tf:variable:`vpc.name` ``.
 
 For resources, the object name is the Terraform identifier.  For example, given
 the following resource:
@@ -49,7 +49,7 @@ resource aws_s3_bucket "data" {
 ```
 
 Assuming that this resource exists inside a module "etl", the role to reference
-this resource would be `:tf:resource:\`etl.data\``.
+this resource would be `` :tf:resource:`etl.data` ``.
 
 [1]: https://gitlab.com/cblegare/sphinx-terraform
 [2]: https://github.com/readthedocs/sphinx-autoapi
