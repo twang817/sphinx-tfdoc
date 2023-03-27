@@ -1,12 +1,15 @@
 [tool.poetry]
-name = "sphinx_tfdoc"
-version = "0.0.2"
-description = ""
+name = "sphinx-tfdoc"
+version = "0.1.0"
+description = "Sphinx API documentation for Terraform Modules"
 authors = ["Tommy Wang <twang@august8.net>"]
+homepage = "https://github.com/twang817/sphinx-tfdoc"
+repository = "https://github.com/twang817/sphinx-tfdoc"
 
 [tool.poetry.dependencies]
+python = ">=3.9"
 Jinja2 = "*"
-sphinx = ">=6"
+sphinx = "*"
 tabulate = "*"
 
 [build-system]
